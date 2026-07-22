@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Self-check for transcript-to-test.
+
+1. Build a synthetic OpenAI messages transcript.
+2. Generate a pytest regression test.
+3. Run the generated test under pytest; assert it passes.
+4. Mutate one stubbed tool result in the generated test.
+5. Re-run pytest; assert it fails.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# Make the local package importable without installing it.
+sys.path.insert(0, os.path.dirname(__file__))
+
+from transcript_to_test.cli import main as cli_main
+
+
+TRANSCRIPT = [
+    {"role": "user", "content": "What is 2+2?"},
+    {"role": "assistant", "content": None, "tool_calls": [
+        {"id": "call_1", "type": "function",
+         "function": {"name": "calc", "arguments": '{"expr":"2+2"}'}},
+    ]},
+    {"role": "tool", "tool_call_id": "call_1", "content": "4"},
+    {"role": "assistant", "content": "The answer is 4."},
+]
+
+
+def _run_pytest(test_path):
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", str(test_path), "-q"],
+        capture_output=True,
+        text=True,
+    )
+
+
+def main():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        transcript_path = tmp / "synthetic.json"
+        test_path = tmp / "test_synthetic.py"
+        transcript_path.write_text(json.dumps(TRANSCRIPT), encoding="utf-8")
+
+        # 1. Generate the test.
+        rc = cli_main([
+            str(transcript_path),
+            "-o", str(test_path),
+            "--framework", "pytest",
+        ])
+        assert rc == 0, f"CLI exited {rc}"
+        assert test_path.exists(), "generated test file missing"
+
+        # 2. Run generated test; it must pass.
+        result = _run_pytest(test_path)
+        assert result.returncode == 0, (
+            f"generated test failed unexpectedly:\nstdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+        # 3. Mutate the stubbed tool result.
+        source = test_path.read_text(encoding="utf-8")
+        mutated = re.sub(
+            r"(\('calc',\s*'\{\"expr\":\"2\+2\"\}'\)\s*:\s*)'4'",
+            r"\1'5'",
+            source,
+        )
+        assert mutated != source, "mutation did not change the generated test"
+        test_path.write_text(mutated, encoding="utf-8")
+
+        # 4. Re-run; it must now fail because the recorded result is still 4.
+        result = _run_pytest(test_path)
+        assert result.returncode != 0, (
+            "mutated test should have failed but passed:\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        assert "returned" in (result.stdout + result.stderr).lower() or "assert" in (
+            result.stdout + result.stderr).lower(), (
+            f"expected an assertion failure, got:\nstdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+    print("selfcheck OK")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

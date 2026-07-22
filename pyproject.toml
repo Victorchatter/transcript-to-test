@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transcript-to-test"
+version = "0.1.0"
+description = "Turn one recorded agent run into a standalone regression test."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Victor Filtchev"}]
+keywords = ["agent", "claude", "openai", "regression", "test", "transcript"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+transcript-to-test = "transcript_to_test.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["transcript_to_test*"]
