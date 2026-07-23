@@ -13,6 +13,8 @@
 [![Deps: 0](https://img.shields.io/badge/dependencies-0-success.svg)](#install)
 [![Self-check](https://img.shields.io/badge/self--check-passing-brightgreen.svg)](#self-check)
 
+[Repository](https://github.com/Victorchatter/transcript-to-test)
+
 </div>
 
 ---
@@ -148,6 +150,8 @@ Adding a new format means adding one small reader module and registering it in t
 
 ```bash
 pipx install .
+# or install directly from GitHub:
+pipx install git+https://github.com/Victorchatter/transcript-to-test.git
 ```
 
 Python 3.10+. **Zero runtime dependencies.**
@@ -161,6 +165,8 @@ pip install pytest
 ---
 
 ## Quick start
+
+> See [`examples/test_session.py`](./examples/test_session.py) for a generated example you can run right now with `pytest examples/test_session.py`.
 
 ### 1. Turn last night's Claude Code run into a test
 
