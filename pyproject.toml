@@ -17,6 +17,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Victorchatter/transcript-to-test"
+Repository = "https://github.com/Victorchatter/transcript-to-test"
+
 [project.scripts]
 transcript-to-test = "transcript_to_test.cli:main"
 
