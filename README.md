@@ -22,6 +22,7 @@
 ## Table of contents
 
 - [The problem it solves](#the-problem-it-solves)
+- [Prior art](#prior-art)
 - [What it is](#what-it-is)
 - [The methodology](#the-methodology)
 - [How it works](#how-it-works)
@@ -50,6 +51,14 @@ Agent runs are expensive, non-deterministic, and hard to regression-test. A tool
 | Tool regressions pass silently | Stubbed tool results catch regressions instantly |
 | CI needs the model + live tools | CI runs offline, zero API calls, zero side effects |
 | Heavy eval frameworks pull in runtimes | One script, one command, zero runtime dependencies |
+
+---
+
+## Prior art
+
+The closest project is [replayd](https://github.com/TaimoorKhan10/replayd) — framework-agnostic and also focused on turning agent runs into regression tests. Its own README describes a Python context manager that wraps your OpenAI/Anthropic client to capture runs live, turns *failed* runs into regression tests, and grades tool-call trajectory (which tools, in what order) rather than the final answer; a `replayd run` CLI is listed as planned, not shipped. A few smaller, framework-locked tools exist too — `kitaru` (ZenML-only), `langchain-replay` (LangChain-only), `agent-replay` (diff-focused) — none framework-agnostic.
+
+`transcript-to-test` takes a different approach on all three axes: it parses an **already-recorded transcript file** (Claude Code JSONL, OpenAI messages, or an agent-vcr tape) instead of requiring live instrumentation of your client; it emits a **fully standalone pytest file** with zero runtime dependency on this package, so the test still runs after you uninstall the tool; and it asserts on the **final answer** (exact, contains, or regex) rather than the tool-call trajectory.
 
 ---
 
