@@ -85,8 +85,25 @@ def parse(text):
     return turns
 
 
-def _parse_model_response(ev):
+def _decode_body(ev):
+    """agent-vcr records the response body as the raw wire TEXT, so it is a
+    JSON string far more often than a dict.
+
+    # ponytail: accept both. This read `ev.get("body", {})` and assumed a dict,
+    # which raised AttributeError on every tape agent-vcr actually writes —
+    # only hand-built fixtures with a dict body worked.
+    """
     body = ev.get("body", {})
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError:
+            return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _parse_model_response(ev):
+    body = _decode_body(ev)
     provider = ev.get("provider", "anthropic")
     if provider == "openai" or "choices" in body:
         return _parse_openai_response(body)
@@ -154,7 +171,7 @@ def _extract_result_text(result):
 
 
 def _extract_initial_prompt(req):
-    body = req.get("body", {})
+    body = _decode_body(req)
     messages = body.get("messages", [])
     if messages and isinstance(messages[0], dict):
         return messages[0].get("content")

@@ -40,6 +40,41 @@ def _run_pytest(test_path):
     )
 
 
+def check_tape():
+    """agent-vcr tape -> canonical turns.
+
+    The fixture uses a body that is a JSON **string**, because that is what
+    agent-vcr actually writes — it records the raw wire text. The reader
+    previously assumed a dict and raised AttributeError on every real tape;
+    nothing caught it because there was no tape coverage here at all.
+    """
+    from transcript_to_test.readers import tape
+
+    def L(o):
+        return json.dumps(o)
+
+    req = L({"system": "You are careful.",
+             "messages": [{"role": "user", "content": "audit this repo"}]})
+    text = "\n".join([
+        L({"kind": "model_request", "seq": 1, "provider": "anthropic", "body": req}),
+        L({"kind": "tool_call", "seq": 2, "server": "fs", "tool": "read",
+           "args": {"p": "/a.py"}, "args_hash": "h1"}),
+        L({"kind": "tool_result", "seq": 3, "server": "fs", "tool": "read",
+           "args_hash": "h1", "result": {"text": "x = 1"}}),
+        L({"kind": "model_response", "seq": 4, "provider": "anthropic",
+           "body": L({"content": [{"type": "text", "text": "Found it."}]})}),
+    ]) + "\n"
+
+    turns = tape.parse(text)
+    assert turns, "tape reader returned no turns"
+    roles = [t["role"] for t in turns]
+    assert roles[0] == "user", f"first turn should be the initial prompt, got {roles}"
+    assert "assistant" in roles, f"expected an assistant turn, got {roles}"
+    joined = json.dumps(turns, default=str)
+    assert "Found it." in joined, "assistant text lost when body was a JSON string"
+    assert "audit this repo" in joined, "initial prompt lost when body was a JSON string"
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -84,6 +119,8 @@ def main():
             f"expected an assertion failure, got:\nstdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
+
+    check_tape()
 
     print("selfcheck OK")
     return 0
