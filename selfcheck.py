@@ -32,12 +32,52 @@ TRANSCRIPT = [
 ]
 
 
+JSON_TRANSCRIPT = [
+    {"role": "user", "content": "Return JSON for 2+2"},
+    {"role": "assistant", "content": None, "tool_calls": [
+        {"id": "call_1", "type": "function",
+         "function": {"name": "calc", "arguments": '{"expr":"2+2"}'}},
+    ]},
+    {"role": "tool", "tool_call_id": "call_1", "content": "4"},
+    {"role": "assistant", "content": '{"result": 4, "status": "ok"}'},
+]
+
+
 def _run_pytest(test_path):
     return subprocess.run(
         [sys.executable, "-m", "pytest", str(test_path), "-q"],
         capture_output=True,
         text=True,
     )
+
+
+def _check_template(tmp, transcript, template, value=None, pattern=None, framework="pytest"):
+    """Generate a test with the given template and assert it passes."""
+    transcript_path = tmp / f"t_{template}.json"
+    test_path = tmp / f"test_{template}.py"
+    transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
+
+    args = [
+        str(transcript_path),
+        "-o", str(test_path),
+        "--framework", framework,
+        "--assert-template", template,
+    ]
+    if value is not None:
+        args.extend(["--assert-value", value])
+    if pattern is not None:
+        args.extend(["--assert-pattern", pattern])
+
+    rc = cli_main(args)
+    assert rc == 0, f"CLI exited {rc} for template {template}"
+    assert test_path.exists(), f"generated test file missing for template {template}"
+
+    result = _run_pytest(test_path)
+    assert result.returncode == 0, (
+        f"generated test failed unexpectedly for template {template}:\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    return test_path
 
 
 def check_detect():
@@ -140,6 +180,26 @@ def main():
             result.stdout + result.stderr).lower(), (
             f"expected an assertion failure, got:\nstdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
+        )
+
+        # Tier-2 template checks.
+        _check_template(tmp, JSON_TRANSCRIPT, "json-path", value="$.result", pattern="4")
+        _check_template(tmp, TRANSCRIPT, "no-error")
+        _check_template(tmp, JSON_TRANSCRIPT, "structured-match", pattern='{"result": 4}')
+        # Verify no-error still catches a mutated tool result.
+        no_error_path = _check_template(tmp, TRANSCRIPT, "no-error")
+        source = no_error_path.read_text(encoding="utf-8")
+        mutated = re.sub(
+            r"(\('calc',\s*'\{\"expr\":\"2\+2\"\}'\)\s*:\s*)'4'",
+            r"\1'5'",
+            source,
+        )
+        assert mutated != source, "mutation did not change the no-error generated test"
+        no_error_path.write_text(mutated, encoding="utf-8")
+        result = _run_pytest(no_error_path)
+        assert result.returncode != 0, (
+            "mutated no-error test should have failed but passed:\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
     check_tape()

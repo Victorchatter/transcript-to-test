@@ -230,7 +230,7 @@ transcript-to-test session.jsonl -o tests/test_session.py \
 ## CLI reference
 
 ```bash
-transcript-to-test <transcript> [-o OUT] [--format FORMAT] [--assert MODE [PATTERN]] [--framework pytest|unittest] [--scrub REGEX]
+transcript-to-test <transcript> [-o OUT] [--format FORMAT] [--assert MODE [PATTERN]] [--assert-template TEMPLATE] [--assert-value VALUE] [--assert-pattern PATTERN] [--framework pytest|unittest] [--scrub REGEX]
 ```
 
 | Flag | Default | Description |
@@ -238,9 +238,14 @@ transcript-to-test <transcript> [-o OUT] [--format FORMAT] [--assert MODE [PATTE
 | `<transcript>` | required | Path to the input transcript file |
 | `-o`, `--output` | `test_<stem>.py` | Output test file path |
 | `--format` | auto-detect | Force format: `agent_vcr_tape`, `claude_code_jsonl`, `openai_messages`, `codex_jsonl` |
-| `--assert` | `exact` | Assertion mode: `exact`, `contains`, or `regex PATTERN` |
+| `--assert` | `exact` | Legacy syntax: `exact`, `contains`, or `regex PATTERN` |
+| `--assert-template` | `exact` | Assertion template preset: `exact`, `contains`, `regex`, `json-path`, `no-error`, `structured-match` |
+| `--assert-value` | none | JSONPath expression (for `json-path`) |
+| `--assert-pattern` | none | Expected pattern (for `regex`, `json-path`, or `structured-match`) |
 | `--framework` | `pytest` | Generated test framework: `pytest` or `unittest` |
 | `--scrub` | none | Regex to remove from recorded values before embedding |
+
+`--assert` and `--assert-template` cannot be used together. `--assert` is kept for backward compatibility and maps to the matching template internally.
 
 The format is auto-detected from the file contents, so most runs do not need
 `--format`. Use it only when the sniffer is ambiguous. The detection order is:
@@ -250,13 +255,33 @@ agent-vcr tape → Claude Code JSONL → OpenAI messages → Codex rollout JSONL
 
 ## Assertion styles
 
-| Mode | Generated assertion | When to use |
+| Template | Generated assertion | When to use |
 |---|---|---|
 | `exact` *(default)* | `assert final == EXPECTED_FINAL` | The regression net. Use when the answer should be byte-for-byte stable. |
 | `contains` | `assert EXPECTED_FINAL in final` | Smoke test. Use when only a key phrase must survive formatting drift. |
 | `regex PATTERN` | `assert re.search(PATTERN, final)` | Flexible validation. Use for dates, numbers, or structured snippets. |
+| `json-path VALUE PATTERN` | `assert _jsonpath(final, VALUE) == PATTERN` | Extract a field from a JSON final answer. VALUE is a tiny JSONPath (`$.key` or `$.arr[0].key`). |
+| `no-error` | *(no final assertion)* | The replay loop itself verifies completion. Use when the final text is intentionally nondeterministic. |
+| `structured-match PATTERN` | `assert _structured_match(final, PATTERN)` | Pattern is a JSON subset; final answer must contain every key/value in the pattern. |
 
-**Recommendation:** Start with `exact`. If it flakes on formatting, move to `contains`. Use `regex` only when the exact text is genuinely variable.
+**Examples:**
+
+```bash
+# Extract a value from a JSON final answer
+transcript-to-test session.jsonl -o tests/test_api.py \
+  --assert-template json-path --assert-value '$.status' --assert-pattern 'ok'
+
+# Only verify the agent completes without error
+transcript-to-test session.jsonl -o tests/test_chat.py --assert-template no-error
+
+# Assert a JSON subset match
+transcript-to-test session.jsonl -o tests/test_structured.py \
+  --assert-template structured-match --assert-pattern '{"answer": 42}'
+```
+
+**Backward compatibility:** The original `--assert MODE [PATTERN]` syntax still works unchanged and maps internally to the matching template.
+
+**Recommendation:** Start with `exact`. If it flakes on formatting, move to `contains`, `json-path`, or `structured-match`. Use `regex` only when the exact text is genuinely variable.
 
 ---
 
@@ -399,7 +424,7 @@ No external test framework is required for the shipped code — only for running
 - Claude Code JSONL, OpenAI messages, agent-vcr tape, and Codex rollout JSONL inputs.
 - Auto-detection of format; optional `--format` override for ambiguous cases.
 - pytest and unittest output.
-- `exact`, `contains`, and `regex` assertions.
+- `exact`, `contains`, `regex`, `json-path`, `no-error`, and `structured-match` assertions.
 - `--scrub REGEX` for nondeterministic values.
 - Standalone generated tests with zero dependency on this package.
 
