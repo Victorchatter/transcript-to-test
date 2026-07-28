@@ -7,8 +7,8 @@ from pathlib import Path
 
 from . import generator
 from .canonical import make_turn
+from .detect import FORMATS, detect
 from .generator import apply_scrub
-from .readers import detect
 
 
 def _derive_output(input_path):
@@ -23,8 +23,11 @@ def _derive_name(output_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="transcript-to-test")
-    parser.add_argument("transcript", help="path to transcript file (Claude Code JSONL, OpenAI messages, or agent-vcr tape)")
+    format_names = [name for name, _ in FORMATS]
+    parser.add_argument("transcript", help="path to transcript file (Claude Code JSONL, OpenAI messages, agent-vcr tape, or Codex rollout JSONL)")
     parser.add_argument("-o", "--output", help="output test file (default: test_<stem>.py)")
+    parser.add_argument("--format", choices=format_names,
+                        help="force input format (default: auto-detect)")
     parser.add_argument("--assert", dest="assert_args", nargs="+", default=["exact"],
                         metavar="MODE_OR_PATTERN",
                         help="assertion mode: exact (default), contains, or regex PATTERN")
@@ -57,7 +60,10 @@ def main(argv=None):
         raise SystemExit(f"transcript-to-test: cannot read {args.transcript!r}: {e}")
 
     try:
-        _, reader = detect(text)
+        if args.format:
+            reader = next(module for name, module in FORMATS if name == args.format)
+        else:
+            _, reader = detect(text)
         turns = reader.parse(text)
     except ValueError as e:
         raise SystemExit(f"transcript-to-test: {e}")

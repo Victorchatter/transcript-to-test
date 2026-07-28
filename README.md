@@ -150,6 +150,7 @@ sequenceDiagram
 | Claude Code JSONL | ✅ | `tool_use` blocks | `tool_result` blocks inside next user turn | Native Anthropic shape |
 | OpenAI messages | ✅ | `tool_calls` array | `role: tool` messages | JSON array input |
 | agent-vcr tape | ✅ | `tool_call` envelopes | `tool_result` envelopes | Wire-level record/replay format |
+| Codex rollout JSONL | ✅ | `function_call` items | `function_call_output` items | OpenAI Codex rollout logs |
 
 Adding a new format means adding one small reader module and registering it in the sniffer.
 
@@ -198,19 +199,26 @@ transcript-to-test ./tapes/run-2026-07-22.jsonl -o tests/test_replay.py
 pytest tests/test_replay.py
 ```
 
-### 4. Looser assertion for nondeterministic formatting
+### 4. Convert a Codex rollout JSONL
+
+```bash
+transcript-to-test codex-rollout.jsonl -o tests/test_codex.py
+pytest tests/test_codex.py
+```
+
+### 5. Looser assertion for nondeterministic formatting
 
 ```bash
 transcript-to-test session.jsonl -o tests/test_session.py --assert contains
 ```
 
-### 5. Regex assertion
+### 6. Regex assertion
 
 ```bash
 transcript-to-test session.jsonl -o tests/test_session.py --assert regex "(?i)the answer is \d+"
 ```
 
-### 6. Scrub timestamps and random IDs before embedding
+### 7. Scrub timestamps and random IDs before embedding
 
 ```bash
 transcript-to-test session.jsonl -o tests/test_session.py \
@@ -222,16 +230,21 @@ transcript-to-test session.jsonl -o tests/test_session.py \
 ## CLI reference
 
 ```bash
-transcript-to-test <transcript> [-o OUT] [--assert MODE [PATTERN]] [--framework pytest|unittest] [--scrub REGEX]
+transcript-to-test <transcript> [-o OUT] [--format FORMAT] [--assert MODE [PATTERN]] [--framework pytest|unittest] [--scrub REGEX]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `<transcript>` | required | Path to the input transcript file |
 | `-o`, `--output` | `test_<stem>.py` | Output test file path |
+| `--format` | auto-detect | Force format: `agent_vcr_tape`, `claude_code_jsonl`, `openai_messages`, `codex_jsonl` |
 | `--assert` | `exact` | Assertion mode: `exact`, `contains`, or `regex PATTERN` |
 | `--framework` | `pytest` | Generated test framework: `pytest` or `unittest` |
 | `--scrub` | none | Regex to remove from recorded values before embedding |
+
+The format is auto-detected from the file contents, so most runs do not need
+`--format`. Use it only when the sniffer is ambiguous. The detection order is:
+agent-vcr tape → Claude Code JSONL → OpenAI messages → Codex rollout JSONL.
 
 ---
 
@@ -343,9 +356,11 @@ transcript-to-test/
 │   ├── __init__.py          # version
 │   ├── cli.py               # argparse entrypoint
 │   ├── canonical.py         # internal turn envelope + JSONL helpers
+│   ├── detect.py            # format auto-detection dispatcher
 │   ├── readers/             # format sniffers and parsers
 │   │   ├── __init__.py
 │   │   ├── claude_code.py
+│   │   ├── codex.py
 │   │   ├── openai.py
 │   │   └── tape.py
 │   ├── generator.py         # render standalone test files
@@ -381,7 +396,8 @@ No external test framework is required for the shipped code — only for running
 ## Scope (v1)
 
 **In:**
-- Claude Code JSONL, OpenAI messages, agent-vcr tape inputs.
+- Claude Code JSONL, OpenAI messages, agent-vcr tape, and Codex rollout JSONL inputs.
+- Auto-detection of format; optional `--format` override for ambiguous cases.
 - pytest and unittest output.
 - `exact`, `contains`, and `regex` assertions.
 - `--scrub REGEX` for nondeterministic values.

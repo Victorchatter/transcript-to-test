@@ -40,6 +40,28 @@ def _run_pytest(test_path):
     )
 
 
+def check_detect():
+    """Auto-detection covers all supported formats."""
+    from transcript_to_test.detect import detect
+    from transcript_to_test.readers import codex
+
+    def L(o):
+        return json.dumps(o)
+
+    codex_text = "\n".join([
+        L({"type": "session_meta", "payload": {"base_instructions": {"text": "You are Codex."}}}),
+        L({"type": "response_item", "payload": {"type": "message", "role": "user",
+           "content": [{"type": "input_text", "text": "hi"}]}}),
+        L({"type": "response_item", "payload": {"type": "message", "role": "assistant",
+           "content": [{"type": "output_text", "text": "hello"}]}}),
+    ]) + "\n"
+    name, module = detect(codex_text)
+    assert name == "codex_jsonl", name
+    assert module is codex, module
+    turns = module.parse(codex_text)
+    assert any(t["role"] == "assistant" for t in turns), turns
+
+
 def check_tape():
     """agent-vcr tape -> canonical turns.
 
@@ -121,6 +143,7 @@ def main():
         )
 
     check_tape()
+    check_detect()
 
     print("selfcheck OK")
     return 0

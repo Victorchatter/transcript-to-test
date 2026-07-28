@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 from ..canonical import make_turn
 
 
+_CLAUDE_TYPES = {"user", "assistant", "system", "tool", "last-prompt",
+                 "mode", "permission-mode", "attachment", "file-history-snapshot",
+                 "ai-title", "queue-operation"}
+
+
 def sniff(text):
     for line in text.splitlines():
         line = line.strip()
@@ -19,9 +24,12 @@ def sniff(text):
             record = json.loads(line)
         except json.JSONDecodeError:
             return False
-        return (isinstance(record, dict)
-                and record.get("type") in ("user", "assistant", "system", "tool")
-                and "message" in record)
+        if not isinstance(record, dict):
+            return False
+        t = record.get("type")
+        message = record.get("message")
+        return (t in _CLAUDE_TYPES
+                or (isinstance(message, dict) and message.get("role") in _CLAUDE_TYPES))
     return False
 
 
