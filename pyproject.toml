@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "transcript-to-test"
-version = "0.3.0"
+version = "0.3.1"
 description = "Turn one recorded agent run into a standalone regression test."
 readme = "README.md"
 license = {text = "MIT"}
