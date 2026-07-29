@@ -7,6 +7,7 @@
 4. Mutate one stubbed tool result in the generated test.
 5. Re-run pytest; assert it fails.
 """
+import ast
 import json
 import os
 import re
@@ -49,6 +50,28 @@ def _run_pytest(test_path):
         capture_output=True,
         text=True,
     )
+
+
+def _mutate_tool_registry(source, key, old_value, new_value):
+    """Rewrite TOOL_REGISTRY in generated test source so mutation is robust to
+    pprint formatting differences across Python versions.
+    """
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "TOOL_REGISTRY":
+                    registry = ast.literal_eval(node.value)
+                    if registry.get(key) != old_value:
+                        raise RuntimeError(
+                            f"registry value for {key!r} is {registry.get(key)!r}, "
+                            f"expected {old_value!r}"
+                        )
+                    registry[key] = new_value
+                    # Build a fresh AST for the mutated dict so unparse is exact.
+                    node.value = ast.parse(repr(registry)).body[0].value
+                    return ast.unparse(tree)
+    raise RuntimeError("could not find TOOL_REGISTRY assignment in generated test")
 
 
 def _check_template(tmp, transcript, template, value=None, pattern=None, framework="pytest"):
@@ -162,10 +185,11 @@ def main():
 
         # 3. Mutate the stubbed tool result.
         source = test_path.read_text(encoding="utf-8")
-        mutated = re.sub(
-            r"(\('calc',\s*'\{\"expr\":\"2\+2\"\}'\)\s*:\s*)'4'",
-            r"\1'5'",
+        mutated = _mutate_tool_registry(
             source,
+            key=("calc", '{"expr":"2+2"}'),
+            old_value="4",
+            new_value="5",
         )
         assert mutated != source, "mutation did not change the generated test"
         test_path.write_text(mutated, encoding="utf-8")
@@ -189,10 +213,11 @@ def main():
         # Verify no-error still catches a mutated tool result.
         no_error_path = _check_template(tmp, TRANSCRIPT, "no-error")
         source = no_error_path.read_text(encoding="utf-8")
-        mutated = re.sub(
-            r"(\('calc',\s*'\{\"expr\":\"2\+2\"\}'\)\s*:\s*)'4'",
-            r"\1'5'",
+        mutated = _mutate_tool_registry(
             source,
+            key=("calc", '{"expr":"2+2"}'),
+            old_value="4",
+            new_value="5",
         )
         assert mutated != source, "mutation did not change the no-error generated test"
         no_error_path.write_text(mutated, encoding="utf-8")
